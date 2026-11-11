@@ -26,6 +26,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         new BluetoothReader(),
         new XInputReader(),
+        new GameSirReader(),
     };
 
     private const int LowThreshold = 20;
@@ -46,6 +47,17 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add("Refresh now", null, async (_, _) => await RefreshAsync());
         menu.Items.Add("Save device report (hid-dump.txt on Desktop)", null, (_, _) => SaveDump());
         menu.Items.Add("Listen to vendor interfaces, 15 s (hid-listen.txt)", null, async (_, _) => await ListenAsync());
+
+        GameSirReader.Enabled = ReadSetting("GameSir");
+        var gamesir = new ToolStripMenuItem("GameSir Nova 2 Lite via dongle (experimental)") { Checked = GameSirReader.Enabled };
+        gamesir.Click += async (_, _) =>
+        {
+            gamesir.Checked = !gamesir.Checked;
+            GameSirReader.Enabled = gamesir.Checked;
+            WriteSetting("GameSir", gamesir.Checked);
+            await RefreshAsync();
+        };
+        menu.Items.Add(gamesir);
 
         var startup = new ToolStripMenuItem("Start with Windows") { Checked = IsAutoStart() };
         startup.Click += (_, _) =>
@@ -197,6 +209,19 @@ internal sealed class TrayApp : ApplicationContext
         if (key == null) return;
         if (enable) key.SetValue(RunValue, $"\"{Environment.ProcessPath}\"");
         else key.DeleteValue(RunValue, false);
+    }
+
+    // ---- Settings (HKCU, no admin rights needed) ----
+    private const string SettingsKey = @"Software\BtBatteryTray";
+    private static bool ReadSetting(string name)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(SettingsKey);
+        return key?.GetValue(name) is int v && v == 1;
+    }
+    private static void WriteSetting(string name, bool value)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(SettingsKey);
+        key.SetValue(name, value ? 1 : 0, RegistryValueKind.DWord);
     }
 
     // ---- Memory ----

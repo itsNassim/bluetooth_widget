@@ -15,6 +15,8 @@ internal static class HidDump
         var sb = new StringBuilder();
         sb.AppendLine($"HID dump - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine(XInputReader.DescribeRaw());
+        sb.AppendLine("GameSir last info reply: " + GameSirReader.LastRaw);
+        sb.AppendLine();
 
         foreach (var d in DeviceList.Local.GetHidDevices().OrderBy(x => x.VendorID).ThenBy(x => x.ProductID))
         {
