@@ -3,7 +3,6 @@ using System.Drawing;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
-using Windows.Devices.Enumeration;
 
 namespace BtBatteryTray;
 
@@ -12,7 +11,6 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        // Single instance
         using var mutex = new Mutex(true, "BtBatteryTray_SingleInstance", out bool isNew);
         if (!isNew) return;
 
@@ -21,17 +19,13 @@ internal static class Program
     }
 }
 
-internal sealed record BtDevice(string Id, string Name, int Level);
-
 internal sealed class TrayApp : ApplicationContext
 {
-    // Windows exposes the battery % of paired Bluetooth devices (classic + BLE) under this key
-    private const string BatteryKey = "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2";
-    private const string ConnectedKey = "System.Devices.Aep.IsConnected";
-    private static readonly string[] ProtocolIds =
+    // Add new readers here (Logitech HID++, Razer, ...). Each one is isolated: a failing reader never breaks the others.
+    private readonly IBatteryReader[] _readers =
     {
-        "{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}", // Bluetooth classic
-        "{bb7bb05e-5972-42b5-94fc-76eaa7084d49}", // Bluetooth LE
+        new BluetoothReader(),
+        new XInputReader(),
     };
 
     private const int LowThreshold = 20;
@@ -50,6 +44,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         var menu = new ContextMenuStrip();
         menu.Items.Add("Refresh now", null, async (_, _) => await RefreshAsync());
+        menu.Items.Add("Save device report (hid-dump.txt on Desktop)", null, (_, _) => SaveDump());
 
         var startup = new ToolStripMenuItem("Start with Windows") { Checked = IsAutoStart() };
         startup.Click += (_, _) =>
@@ -64,7 +59,7 @@ internal sealed class TrayApp : ApplicationContext
         _tray = new NotifyIcon
         {
             ContextMenuStrip = menu,
-            Text = "Bluetooth battery…",
+            Text = "Battery monitor…",
             Visible = true,
         };
         SetIcon("…", Color.Gray);
@@ -82,7 +77,7 @@ internal sealed class TrayApp : ApplicationContext
         _busy = true;
         try
         {
-            var devices = await ReadDevicesAsync();
+            var devices = await ReadAllAsync();
             UpdateUi(devices);
             NotifyIfLow(devices);
         }
@@ -97,37 +92,23 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
-    private static async Task<List<BtDevice>> ReadDevicesAsync()
+    private async Task<List<BatteryDevice>> ReadAllAsync()
     {
-        var result = new Dictionary<string, BtDevice>();
-        string[] props = { BatteryKey, ConnectedKey };
-
-        foreach (var proto in ProtocolIds)
+        var all = new List<BatteryDevice>();
+        foreach (var reader in _readers)
         {
-            string aqs = $"System.Devices.Aep.ProtocolId:=\"{proto}\" AND " +
-                         "System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True";
-
-            var infos = await DeviceInformation.FindAllAsync(
-                aqs, props, DeviceInformationKind.AssociationEndpoint);
-
-            foreach (var d in infos)
-            {
-                bool connected = d.Properties.TryGetValue(ConnectedKey, out var c) && c is true;
-                if (!connected) continue;
-
-                if (d.Properties.TryGetValue(BatteryKey, out var b) && b is byte level)
-                    result[d.Id] = new BtDevice(d.Id, d.Name, level);
-            }
+            try { all.AddRange(await reader.ReadAsync()); }
+            catch { /* one broken reader must not stop the others */ }
         }
-        return result.Values.OrderBy(x => x.Level).ToList();
+        return all.OrderBy(d => d.Level).ToList();
     }
 
-    private void UpdateUi(List<BtDevice> devices)
+    private void UpdateUi(List<BatteryDevice> devices)
     {
         if (devices.Count == 0)
         {
             SetIcon("–", Color.Gray);
-            _tray.Text = "No Bluetooth device with battery info";
+            _tray.Text = "No device reporting its battery";
             return;
         }
 
@@ -135,22 +116,35 @@ internal sealed class TrayApp : ApplicationContext
         var color = lowest.Level <= LowThreshold ? Color.FromArgb(220, 50, 50) : Color.FromArgb(40, 170, 80);
         SetIcon(lowest.Level.ToString(), color);
 
-        var text = string.Join("\n", devices.Select(d => $"{d.Name}: {d.Level}%"));
+        var text = string.Join("\n", devices.Select(d => $"{d.Name}: {(d.Approx ? "~" : "")}{d.Level}%"));
         _tray.Text = Truncate(text, 120); // NotifyIcon limit is 127 chars
     }
 
-    private void NotifyIfLow(List<BtDevice> devices)
+    private void NotifyIfLow(List<BatteryDevice> devices)
     {
         foreach (var d in devices)
         {
             if (d.Level <= LowThreshold && _alerted.Add(d.Id))
-                _tray.ShowBalloonTip(5000, "Low battery", $"{d.Name}: {d.Level}%", ToolTipIcon.Warning);
+                _tray.ShowBalloonTip(5000, "Low battery", $"{d.Name}: {(d.Approx ? "~" : "")}{d.Level}%", ToolTipIcon.Warning);
             else if (d.Level >= RearmThreshold)
                 _alerted.Remove(d.Id);
         }
     }
 
-    // ---- Tray icon drawing (text rendered into a 32x32 bitmap) ----
+    private void SaveDump()
+    {
+        try
+        {
+            string path = HidDump.Run();
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _tray.ShowBalloonTip(5000, "Report failed", ex.Message, ToolTipIcon.Error);
+        }
+    }
+
+    // ---- Tray icon drawing ----
     private void SetIcon(string text, Color back)
     {
         using var bmp = new Bitmap(32, 32);
@@ -163,11 +157,7 @@ internal sealed class TrayApp : ApplicationContext
 
             float size = text.Length >= 3 ? 15f : 22f;
             using var font = new Font("Segoe UI", size, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var fmt = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center,
-            };
+            using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             g.DrawString(text, font, Brushes.White, new RectangleF(0, 0, 32, 32), fmt);
         }
 

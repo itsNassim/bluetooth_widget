@@ -16,3 +16,9 @@ git push origin v1.0.0
 ```
 
 Outputs: `BtBatteryTray-<version>-setup.exe` (per-user installer, no admin needed) and `BtBatteryTray-<version>-portable-win-x64.zip`.
+
+## Supported sources
+- Bluetooth (classic + BLE) devices that report a battery level to Windows
+- XInput gamepads (coarse levels, only if the controller reports its battery)
+- Tray menu > "Save device report" writes `hid-dump.txt` (all HID devices + raw XInput values) to the Desktop,
+  used to add support for new 2.4 GHz dongle devices (implement `IBatteryReader` in `Readers/`).
