@@ -22,3 +22,4 @@ Outputs: `BtBatteryTray-<version>-setup.exe` (per-user installer, no admin neede
 - XInput gamepads (coarse levels, only if the controller reports its battery)
 - Tray menu > "Save device report" writes `hid-dump.txt` (all HID devices + raw XInput values) to the Desktop,
   used to add support for new 2.4 GHz dongle devices (implement `IBatteryReader` in `Readers/`).
+- Tray menu > "Listen to vendor interfaces" writes `hid-listen.txt` (read-only probe of vendor-defined HID interfaces).

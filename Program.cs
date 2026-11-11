@@ -45,6 +45,7 @@ internal sealed class TrayApp : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add("Refresh now", null, async (_, _) => await RefreshAsync());
         menu.Items.Add("Save device report (hid-dump.txt on Desktop)", null, (_, _) => SaveDump());
+        menu.Items.Add("Listen to vendor interfaces, 15 s (hid-listen.txt)", null, async (_, _) => await ListenAsync());
 
         var startup = new ToolStripMenuItem("Start with Windows") { Checked = IsAutoStart() };
         startup.Click += (_, _) =>
@@ -141,6 +142,20 @@ internal sealed class TrayApp : ApplicationContext
         catch (Exception ex)
         {
             _tray.ShowBalloonTip(5000, "Report failed", ex.Message, ToolTipIcon.Error);
+        }
+    }
+
+    private async Task ListenAsync()
+    {
+        _tray.ShowBalloonTip(4000, "Listening for 15 s", "Move the mouse and press the controller buttons now", ToolTipIcon.Info);
+        try
+        {
+            string path = await HidListen.RunAsync();
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _tray.ShowBalloonTip(5000, "Listen failed", ex.Message, ToolTipIcon.Error);
         }
     }
 
