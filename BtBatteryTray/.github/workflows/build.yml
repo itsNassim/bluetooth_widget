@@ -1,0 +1,66 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create GitHub Releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $v = "${{ github.ref_name }}" -replace '^v',''
+          } else {
+            $v = "0.0.0-dev.${{ github.run_number }}"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish (self-contained single file)
+        shell: pwsh
+        run: dotnet publish BtBatteryTray.csproj -c Release -o publish
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=${{ steps.ver.outputs.version }}" `
+            installer\BtBatteryTray.iss
+
+      - name: Zip portable build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path publish\BtBatteryTray.exe `
+            -DestinationPath "dist\BtBatteryTray-${{ steps.ver.outputs.version }}-portable-win-x64.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BtBatteryTray-${{ steps.ver.outputs.version }}
+          path: dist/*
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
