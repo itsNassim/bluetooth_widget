@@ -4,8 +4,8 @@ using System.Text;
 namespace BtBatteryTray;
 
 /// <summary>
-/// Any XInput gamepad (Xbox-compatible, including many 2.4 GHz dongle controllers).
-/// Windows only gives 4 coarse levels, and only if the controller/dongle reports its battery.
+/// Any XInput gamepad (Xbox-compatible). Windows only gives 4 coarse levels, and only if the
+/// controller/dongle reports its battery (many dongles report "wired", which is skipped).
 /// </summary>
 internal sealed class XInputReader : IBatteryReader
 {
@@ -17,7 +17,7 @@ internal sealed class XInputReader : IBatteryReader
     [DllImport("xinput1_4.dll")]
     private static extern uint XInputGetBatteryInformation(uint userIndex, byte devType, out BatteryInfo info);
 
-    public Task<List<BatteryDevice>> ReadAsync()
+    public Task<List<BatteryDevice>> ReadAsync(bool force)
     {
         var list = new List<BatteryDevice>();
         try
@@ -28,14 +28,14 @@ internal sealed class XInputReader : IBatteryReader
                 if (info.BatteryType is not (2 or 3)) continue;                    // only alkaline / NiMH = real battery
                 int level = info.BatteryLevel switch { 0 => 5, 1 => 25, 2 => 60, 3 => 100, _ => -1 };
                 if (level < 0) continue;
-                list.Add(new BatteryDevice($"xinput{i}", $"Controller {i + 1}", level, Name, Approx: true));
+                list.Add(new BatteryDevice($"xinput{i}", $"Controller {i + 1}", level, Name, DeviceKind.Gamepad, Approx: true));
             }
         }
         catch (DllNotFoundException) { }
         return Task.FromResult(list);
     }
 
-    /// <summary>Raw values for the diagnostics file (so we can see what the controller really reports).</summary>
+    /// <summary>Raw values for the diagnostics file.</summary>
     public static string DescribeRaw()
     {
         var sb = new StringBuilder();

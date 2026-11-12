@@ -1,7 +1,15 @@
 namespace BtBatteryTray;
 
-/// <summary>One detected device. Approx = the source only gives coarse levels (e.g. XInput: 4 steps).</summary>
-internal sealed record BatteryDevice(string Id, string Name, int Level, string Source, bool Approx = false);
+internal enum DeviceKind { Unknown, Mouse, Keyboard, Gamepad, Headset }
+
+/// <summary>
+/// One detected device.
+/// Approx   = the source only gives coarse/approximate levels.
+/// Charging = true when on external power, null when the source cannot tell.
+/// </summary>
+internal sealed record BatteryDevice(
+    string Id, string Name, int Level, string Source,
+    DeviceKind Kind = DeviceKind.Unknown, bool Approx = false, bool? Charging = null);
 
 /// <summary>
 /// A source of battery information. To support a new brand/protocol, write one class
@@ -10,5 +18,10 @@ internal sealed record BatteryDevice(string Id, string Name, int Level, string S
 internal interface IBatteryReader
 {
     string Name { get; }
-    Task<List<BatteryDevice>> ReadAsync();
+
+    /// <param name="force">true = ignore any cache and query the device now (connect/disconnect events, manual refresh).</param>
+    Task<List<BatteryDevice>> ReadAsync(bool force);
+
+    /// <summary>Optional: lets a reader ask for an immediate refresh when its device changes.</summary>
+    void StartWatching(Action onChange) { }
 }

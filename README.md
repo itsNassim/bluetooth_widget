@@ -31,7 +31,25 @@ shows the battery, then searches the capture for the request/reply containing th
 powershell -ExecutionPolicy Bypass -File tools\battery-capture.ps1 -Seconds 45 -VendorId 3537
 ```
 
-## GameSir Nova 2 Lite (2.4 GHz dongle)
-Experimental reader (tray menu > "GameSir Nova 2 Lite via dongle"), opt-in. It sends the same 3 packets the official
-app sends (handshake, info query, handshake) and reads the battery from byte 18 of the reply. Derived from one capture
-at 82%: confirm it with a second capture at a different level before trusting it.
+## Supported sources
+| Source | Devices | Notes |
+|---|---|---|
+| Bluetooth | any paired device that reports a battery to Windows | updates on connect / disconnect |
+| XInput | Xbox-style pads | 4 coarse levels, only if the pad reports a real battery |
+| GameSir | Nova 2 Lite on its 2.4 GHz dongle (3537:1098) | queries the dongle (3 small packets) every 30 s; battery = byte 18 of the reply |
+| Attack Shark | X6 / X11 / other Xenta (1D57) mice on the 2.4 GHz dongle | 100 % passive: the dongle pushes a frame every 2 s (`03 MM 40 ST NN`); also gives charging state |
+
+Connect / disconnect is detected automatically (USB hot-plug events, Bluetooth watcher, mouse frames).
+Charging: Attack Shark = known (state byte). GameSir = not known yet (needs a capture while charging).
+
+## Taskbar widget
+Docked left of the system tray: device glyph + battery icon filled to the level, % on top, bolt when charging.
+Green > 40 %, orange 21-40 %, red <= 20 %. Right-click: theme, move left/right, tray icon on/off.
+
+## Adding a device
+Implement `IBatteryReader` in `Readers/` and add it to the list in `TrayApp`. Tray menu > "Save device report" and
+`tools/battery-capture.ps1` help to find the protocol of a new 2.4 GHz device.
+
+## Credits / references (protocols)
+- Attack Shark battery frame: daeoxide/attackshark-battery-windows, gabrielmf1998/Attack-Shark-Battery-KDE, blak0p/attack-shark-linux (all MIT or similar)
+- Multi-brand mouse battery drivers worth porting (Logitech HID++, Razer, Lamzu, Compx...): Fan4Metal/mouse_tray

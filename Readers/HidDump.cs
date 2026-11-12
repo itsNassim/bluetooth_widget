@@ -10,12 +10,13 @@ namespace BtBatteryTray;
 /// </summary>
 internal static class HidDump
 {
-    public static string Run()
+    public static string Run(string extra = "")
     {
         var sb = new StringBuilder();
         sb.AppendLine($"HID dump - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine(XInputReader.DescribeRaw());
         sb.AppendLine("GameSir last info reply: " + GameSirReader.LastRaw);
+        if (extra.Length > 0) sb.AppendLine(extra);
         sb.AppendLine();
 
         foreach (var d in DeviceList.Local.GetHidDevices().OrderBy(x => x.VendorID).ThenBy(x => x.ProductID))
