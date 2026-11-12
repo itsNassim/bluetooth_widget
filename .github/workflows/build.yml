@@ -10,9 +10,19 @@ on:
 permissions:
   contents: write   # needed to create GitHub Releases
 
+# A new push cancels the previous run of the same branch, so runs never pile up
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 20      # a stuck job is killed after 20 min instead of 6 hours
     steps:
       - uses: actions/checkout@v4
 
@@ -35,9 +45,14 @@ jobs:
         shell: pwsh
         run: dotnet publish BtBatteryTray.csproj -c Release -o publish
 
-      - name: Install Inno Setup
+      - name: Install Inno Setup (only if the runner image lacks it)
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        timeout-minutes: 8
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) { Write-Host "Inno Setup already installed"; exit 0 }
+          choco install innosetup --no-progress --limit-output -y
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found after install" }
 
       - name: Build installer
         shell: pwsh
