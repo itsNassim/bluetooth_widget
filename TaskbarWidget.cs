@@ -246,9 +246,9 @@ internal sealed class TaskbarWidget : Form
                 g.DrawLine(pen, P(.19f, .42f), P(.35f, .42f));       // d-pad
                 g.DrawLine(pen, P(.27f, .34f), P(.27f, .50f));
                 using var b = new SolidBrush(c);
-                float r = 1.15f * s;
-                g.FillEllipse(b, x + w * .70f - r, y + h * .26f - r, 2 * r, 2 * r);   // buttons
-                g.FillEllipse(b, x + w * .79f - r, y + h * .38f - r, 2 * r, 2 * r);
+                float dot = 1.15f * s;
+                g.FillEllipse(b, x + w * .70f - dot, y + h * .26f - dot, 2 * dot, 2 * dot);   // buttons
+                g.FillEllipse(b, x + w * .79f - dot, y + h * .38f - dot, 2 * dot, 2 * dot);
                 break;
             }
             case DeviceKind.Headset:
