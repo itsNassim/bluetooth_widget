@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
@@ -8,7 +7,9 @@ namespace BtBatteryTray;
 
 /// <summary>
 /// Battery widget docked in the Windows 10 taskbar, just left of the system tray area.
-/// One cell per device: [device glyph] [battery icon filled to the % with the number on top, bolt on top while charging].
+/// "Minimal bars" style: one rounded capsule with a violet outline; per device a glyph (mouse, gamepad, headset,
+/// keyboard) with a thin level bar underneath (red / orange / green) and a small bolt while charging.
+/// The exact percentages are in the hover tooltip, or next to the icons when ShowPercent is on.
 /// It is a child window of the taskbar (Shell_TrayWnd) so it follows the taskbar and hides with it in fullscreen;
 /// if Windows refuses the re-parenting it falls back to a topmost window placed over the taskbar.
 /// </summary>
@@ -16,6 +17,7 @@ internal sealed class TaskbarWidget : Form
 {
     public int ThemeMode { get; set; }      // 0 = follow Windows, 1 = dark, 2 = light
     public int OffsetPx { get; set; }       // extra distance to the left of the tray area
+    public bool ShowPercent { get; set; } = true;   // numbers (47%) next to the icons
 
     private List<BatteryDevice> _devices = new();
     private readonly System.Windows.Forms.Timer _reposition = new() { Interval = 3000 };
@@ -25,6 +27,10 @@ internal sealed class TaskbarWidget : Form
     private static readonly Color Green = Color.FromArgb(46, 196, 105);
     private static readonly Color Orange = Color.FromArgb(255, 159, 26);
     private static readonly Color Red = Color.FromArgb(232, 65, 56);
+    private static readonly Color Violet = Color.FromArgb(139, 124, 246);
+
+    // layout, in pixels at 96 dpi
+    private const float CapPadX = 12, OuterMargin = 4, CellGap = 14, GlyphCol = 24, PercentCol = 32, CapHeight = 32;
 
     public TaskbarWidget()
     {
@@ -67,6 +73,10 @@ internal sealed class TaskbarWidget : Form
         base.WndProc(ref m);
     }
 
+    internal static Color LevelColor(int level) => level <= 20 ? Red : level <= 50 ? Orange : Green;
+
+    private float CellWidth(float s) => (GlyphCol + (ShowPercent ? PercentCol : 0)) * s;
+
     public void SetDevices(List<BatteryDevice> devices)
     {
         _devices = devices;
@@ -76,13 +86,13 @@ internal sealed class TaskbarWidget : Form
             $"{d.Name}: {(d.Approx ? "~" : "")}{d.Level}%{(d.Charging == true ? " (charging)" : "")}")));
 
         float s = DeviceDpi / 96f;
-        Width = (int)(devices.Count * CellWidth(s) + 8 * s);
+        float content = devices.Count * CellWidth(s) + (devices.Count - 1) * CellGap * s;
+        Width = (int)(content + 2 * (CapPadX + OuterMargin) * s);
+
         Reposition();                       // re-parents into the taskbar before the first show: no flicker at (0,0)
         if (!Visible) { Show(); Reposition(); }
         Invalidate();
     }
-
-    private static float CellWidth(float s) => 70 * s;
 
     // ------------------------------------------------------------------ placement
     public void Reposition()
@@ -132,70 +142,57 @@ internal sealed class TaskbarWidget : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         bool light = IsLight();
-        var back = light ? Color.FromArgb(238, 238, 238) : Color.FromArgb(26, 26, 26);
+        var back = light ? Color.FromArgb(238, 238, 238) : Color.FromArgb(30, 30, 34);
         var fore = light ? Color.FromArgb(20, 20, 20) : Color.White;
+        var accent = light ? Color.FromArgb(109, 91, 208) : Color.FromArgb(169, 155, 255);
 
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = TextRenderingHint.AntiAlias;
         g.Clear(back);
 
         float s = DeviceDpi / 96f;
-        float x = 4 * s;
+        float capH = CapHeight * s;
+        var cap = new RectangleF(OuterMargin * s, (Height - capH) / 2f, Width - 2 * OuterMargin * s, capH);
+        using (var pen = new Pen(Violet, 1.5f * s))
+        using (var path = RoundRect(cap, 10 * s))
+            g.DrawPath(pen, path);
+
+        float x = cap.Left + CapPadX * s;
         foreach (var d in _devices)
         {
-            DrawCell(g, d, x, s, back, fore);
-            x += CellWidth(s);
+            DrawCell(g, d, x, cap.Top, capH, s, back, fore, accent);
+            x += CellWidth(s) + CellGap * s;
         }
     }
 
-    private void DrawCell(Graphics g, BatteryDevice d, float x, float s, Color back, Color fore)
+    private void DrawCell(Graphics g, BatteryDevice d, float x, float capTop, float capH, float s, Color back, Color fore, Color accent)
     {
-        float cy = Height / 2f;
-        Color fill = d.Level <= 20 ? Red : d.Level <= 40 ? Orange : Green;
-
         // device glyph
-        DrawGlyph(g, d.Kind, new RectangleF(x, cy - 8 * s, 16 * s, 16 * s), fore, s);
+        float gy = capTop + 5 * s;
+        DrawGlyph(g, d.Kind, new RectangleF(x + 4 * s, gy, 16 * s, 16 * s), accent, s);
 
-        // battery body
-        float bx = x + 21 * s, bw = 38 * s, bh = 20 * s, by = cy - bh / 2;
-        var body = new RectangleF(bx, by, bw, bh);
-        using (var outline = new Pen(Color.FromArgb(200, fore), 1.4f * s))
-        using (var path = RoundRect(body, 4 * s))
-            g.DrawPath(outline, path);
-        using (var nub = new SolidBrush(Color.FromArgb(200, fore)))
-            g.FillRectangle(nub, bx + bw + 1 * s, cy - 3.5f * s, 2.5f * s, 7 * s);
-
-        // fill, proportional to the level
-        float pad = 2.2f * s;
-        float inner = bw - 2 * pad;
-        float fw = Math.Max(inner * Math.Clamp(d.Level, 0, 100) / 100f, d.Level > 0 ? 3 * s : 0);
-        if (fw > 0)
-        {
-            var fr = new RectangleF(bx + pad, by + pad, fw, bh - 2 * pad);
-            using var fb = new SolidBrush(fill);
-            using var fp = RoundRect(fr, 2.2f * s);
+        // thin level bar under the glyph (never shorter than 12 % so the lowest level stays visible)
+        float bx = x + 3 * s, by = gy + 20 * s, bw = 18 * s, bh = 3 * s;
+        using (var track = new SolidBrush(Color.FromArgb(55, fore)))
+        using (var tp = RoundRect(new RectangleF(bx, by, bw, bh), 1.5f * s))
+            g.FillPath(track, tp);
+        float fw = bw * Math.Max(12, Math.Clamp(d.Level, 0, 100)) / 100f;
+        using (var fb = new SolidBrush(LevelColor(d.Level)))
+        using (var fp = RoundRect(new RectangleF(bx, by, fw, bh), 1.5f * s))
             g.FillPath(fb, fp);
-        }
 
-        // percentage on top of the battery (outlined for legibility), shifted right when the bolt is shown
-        bool charging = d.Charging == true;
-        float shift = charging ? 5 * s : 0;
-        var textRect = new RectangleF(bx + shift, by, bw - shift, bh);
-        using (var fam = new FontFamily("Segoe UI"))
-        using (var tp = new GraphicsPath())
-        using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+        // bolt at the top-right corner of the glyph while charging
+        if (d.Charging == true)
+            DrawBolt(g, new RectangleF(x + 17 * s, capTop + 1.5f * s, 7 * s, 11 * s), back);
+
+        // optional number to the right of the icon
+        if (ShowPercent)
         {
-            tp.AddString(d.Level.ToString(), fam, (int)FontStyle.Bold, 11 * s, textRect, sf);
-            using var halo = new Pen(Color.FromArgb(210, back), 2.4f * s) { LineJoin = LineJoin.Round };
-            g.DrawPath(halo, tp);
-            using var tb = new SolidBrush(fore);
-            g.FillPath(tb, tp);
+            using var font = new Font("Segoe UI", 11 * s, FontStyle.Regular, GraphicsUnit.Pixel);
+            using var br = new SolidBrush(d.Level <= 20 ? Red : fore);
+            using var sf = new StringFormat { LineAlignment = StringAlignment.Center };
+            g.DrawString(d.Level + "%", font, br, new RectangleF(x + GlyphCol * s + 1 * s, capTop, PercentCol * s, capH), sf);
         }
-
-        // charging bolt on top of the battery
-        if (charging)
-            DrawBolt(g, new RectangleF(bx + 4 * s, by + 3 * s, 8 * s, bh - 6 * s), back);
     }
 
     private static void DrawBolt(Graphics g, RectangleF r, Color back)
@@ -233,16 +230,25 @@ internal sealed class TaskbarWidget : Form
             }
             case DeviceKind.Gamepad:
             {
-                var body = new RectangleF(x, y + h * 0.18f, w, h * 0.50f);
-                using var p = RoundRect(body, h * 0.22f);
-                g.DrawPath(pen, p);
-                g.DrawEllipse(pen, x + w * 0.04f, y + h * 0.50f, w * 0.26f, h * 0.42f);        // left grip
-                g.DrawEllipse(pen, x + w * 0.70f, y + h * 0.50f, w * 0.26f, h * 0.42f);        // right grip
-                g.DrawLine(pen, x + w * 0.22f, y + h * 0.43f, x + w * 0.38f, y + h * 0.43f);   // d-pad
-                g.DrawLine(pen, x + w * 0.30f, y + h * 0.33f, x + w * 0.30f, y + h * 0.53f);
+                // classic controller silhouette: shoulders, two grips, d-pad on the left, two buttons on the right
+                PointF P(float px, float py) => new PointF(x + w * px, y + h * (py - 0.08f));   // shifted up: centered in the box
+                using var body = new GraphicsPath();
+                body.AddLine(P(.30f, .20f), P(.70f, .20f));
+                body.AddBezier(P(.70f, .20f), P(.88f, .20f), P(.97f, .40f), P(.99f, .64f));
+                body.AddBezier(P(.99f, .64f), P(1.0f, .86f), P(.88f, .96f), P(.80f, .86f));
+                body.AddBezier(P(.80f, .86f), P(.74f, .78f), P(.70f, .66f), P(.58f, .66f));
+                body.AddLine(P(.58f, .66f), P(.42f, .66f));
+                body.AddBezier(P(.42f, .66f), P(.30f, .66f), P(.26f, .78f), P(.20f, .86f));
+                body.AddBezier(P(.20f, .86f), P(.12f, .96f), P(.0f, .86f), P(.01f, .64f));
+                body.AddBezier(P(.01f, .64f), P(.03f, .40f), P(.12f, .20f), P(.30f, .20f));
+                body.CloseFigure();
+                g.DrawPath(pen, body);
+                g.DrawLine(pen, P(.19f, .42f), P(.35f, .42f));       // d-pad
+                g.DrawLine(pen, P(.27f, .34f), P(.27f, .50f));
                 using var b = new SolidBrush(c);
-                g.FillEllipse(b, x + w * 0.62f, y + h * 0.36f, 2.2f * s, 2.2f * s);            // buttons
-                g.FillEllipse(b, x + w * 0.76f, y + h * 0.44f, 2.2f * s, 2.2f * s);
+                float r = 1.15f * s;
+                g.FillEllipse(b, x + w * .70f - r, y + h * .26f - r, 2 * r, 2 * r);   // buttons
+                g.FillEllipse(b, x + w * .79f - r, y + h * .38f - r, 2 * r, 2 * r);
                 break;
             }
             case DeviceKind.Headset:

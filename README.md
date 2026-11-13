@@ -42,9 +42,10 @@ powershell -ExecutionPolicy Bypass -File tools\battery-capture.ps1 -Seconds 45 -
 Connect / disconnect is detected automatically (USB hot-plug events, Bluetooth watcher, mouse frames).
 Charging: Attack Shark = known (state byte). GameSir = not known yet (needs a capture while charging).
 
-## Taskbar widget
-Docked left of the system tray: device glyph + battery icon filled to the level, % on top, bolt when charging.
-Green > 40 %, orange 21-40 %, red <= 20 %. Right-click: theme, move left/right, tray icon on/off.
+## Taskbar widget ("Minimal bars" style)
+Docked left of the system tray, in one rounded violet capsule: per device a glyph (mouse, gamepad, headset, keyboard)
+with a thin level bar underneath (red <= 20 %, orange <= 50 %, green above) and a small bolt while charging.
+The percentage ("47%") is shown next to each icon (menu: "Show percentage next to icons" to hide it). Right-click: theme, move left/right, tray icon on/off.
 
 ## Adding a device
 Implement `IBatteryReader` in `Readers/` and add it to the list in `TrayApp`. Tray menu > "Save device report" and

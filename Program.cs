@@ -51,7 +51,7 @@ internal sealed class TrayApp : ApplicationContext
         _widgetEnabled = ReadInt("Widget", 1) == 1;
         _trayEnabled = ReadInt("Tray", 1) == 1;
 
-        _widget = new TaskbarWidget { ThemeMode = ReadInt("Theme", 0), OffsetPx = ReadInt("Offset", 0) };
+        _widget = new TaskbarWidget { ThemeMode = ReadInt("Theme", 0), OffsetPx = ReadInt("Offset", 0), ShowPercent = ReadInt("ShowPercent", 1) == 1 };
         _widget.LeftClick += RequestRefresh;
         _widget.Prepare();
         _sync = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
@@ -120,6 +120,15 @@ internal sealed class TrayApp : ApplicationContext
             theme.DropDownItems.Add(item);
         }
         menu.Items.Add(theme);
+
+        var showPct = new ToolStripMenuItem("Show percentage next to icons") { Checked = _widget.ShowPercent };
+        showPct.Click += (_, _) =>
+        {
+            _widget.ShowPercent = showPct.Checked = !showPct.Checked;
+            WriteInt("ShowPercent", _widget.ShowPercent ? 1 : 0);
+            ApplyUi(_last);
+        };
+        menu.Items.Add(showPct);
 
         menu.Items.Add("Move widget left", null, (_, _) => MoveWidget(+16));
         menu.Items.Add("Move widget right", null, (_, _) => MoveWidget(-16));
@@ -217,7 +226,7 @@ internal sealed class TrayApp : ApplicationContext
 
     private static Color LevelColor(int level) =>
         level <= LowThreshold ? Color.FromArgb(220, 50, 50) :
-        level <= 40 ? Color.FromArgb(235, 140, 20) : Color.FromArgb(40, 170, 80);
+        level <= 50 ? Color.FromArgb(235, 140, 20) : Color.FromArgb(40, 170, 80);
 
     private void NotifyIfLow(List<BatteryDevice> devices)
     {
