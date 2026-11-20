@@ -11,7 +11,6 @@
     <AssemblyName>BtBatteryTray</AssemblyName>
 
     <!-- Low-memory settings -->
-    <InvariantGlobalization>true</InvariantGlobalization>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>

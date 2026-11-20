@@ -38,6 +38,8 @@ powershell -ExecutionPolicy Bypass -File tools\battery-capture.ps1 -Seconds 45 -
 | XInput | Xbox-style pads | 4 coarse levels, only if the pad reports a real battery |
 | GameSir | Nova 2 Lite on its 2.4 GHz dongle (3537:1098) | queries the dongle (3 small packets) every 30 s; battery = byte 18 of the reply |
 | Attack Shark | X6 / X11 / other Xenta (1D57) mice on the 2.4 GHz dongle | 100 % passive: the dongle pushes a frame every 2 s (`03 MM 40 ST NN`); also gives charging state |
+| Logitech | mice/keyboards on a Unifying, Lightspeed or Bolt receiver (046D), HID++ 1.0 and 2.0 | **UNCONFIRMED**, needs testing on real hardware |
+| Razer | mice on a 2.4 GHz receiver (1532), standard 90-byte feature report | a handful of models in a table in `RazerReader.cs`; **UNCONFIRMED**, needs testing |
 
 Connect / disconnect is detected automatically (USB hot-plug events, Bluetooth watcher, mouse frames).
 Charging: Attack Shark = known (state byte). GameSir = not known yet (needs a capture while charging).
